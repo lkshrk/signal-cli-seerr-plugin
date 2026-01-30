@@ -1,0 +1,26 @@
+return {
+  _all = {
+    coverage = false,
+    lpath = "./plugins/?.lua;./tests/unit/helpers/?.lua;./tests/unit/?.lua",
+    cpath = "",
+    verbose = true,
+    output = "utfTerminal"
+  },
+  default = {
+    pattern = "_spec.lua$",
+    helper = "tests/unit/helpers/http_mock.lua"
+  },
+  unit = {
+    pattern = "_spec.lua$",
+    ROOT = {"tests/unit"}
+  },
+  ci = {
+    pattern = "_spec.lua$",
+    output = "junit",
+    ["Xoutput"] = "tests/results/junit.xml"
+  },
+  coverage = {
+    stats = true,
+    report = "luacov.report.out"
+  }
+}

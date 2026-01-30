@@ -1,0 +1,2 @@
+endpoint: rich-message/:number
+method: POST

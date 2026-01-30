@@ -1,0 +1,95 @@
+name: Release Plugin
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    name: Create Release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Create release directory
+      run: |
+        mkdir -p release/signal-richmessage-plugin
+        cp plugins/richmessage.def release/signal-richmessage-plugin/
+        cp plugins/richmessage.lua release/signal-richmessage-plugin/
+        cp README.md release/signal-richmessage-plugin/
+        cp LICENSE release/signal-richmessage-plugin/
+    
+    - name: Create release archive
+      run: |
+        cd release
+        tar -czf signal-richmessage-plugin-${{ steps.get_version.outputs.VERSION }}.tar.gz signal-richmessage-plugin/
+        zip -r signal-richmessage-plugin-${{ steps.get_version.outputs.VERSION }}.zip signal-richmessage-plugin/
+    
+    - name: Generate release notes
+      run: |
+        cat > release_notes.md << 'EOF'
+        ## Signal CLI Rich Message Plugin ${{ steps.get_version.outputs.VERSION }}
+        
+        ### Installation
+        
+        **Option 1: Download and extract:**
+        ```bash
+        # Download the release
+        curl -L -o plugin.tar.gz https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.VERSION }}/signal-richmessage-plugin-${{ steps.get_version.outputs.VERSION }}.tar.gz
+        
+        # Extract to your plugins directory
+        tar -xzf plugin.tar.gz -C /path/to/your/plugins/
+        ```
+        
+        **Option 2: Direct copy:**
+        ```bash
+        # Copy the two plugin files to your signal-cli-rest-api plugins directory
+cp richmessage.def /path/to/plugins/
+        cp richmessage.lua /path/to/plugins/
+        ```
+        
+        ### Files Included
+        - `richmessage.def` - Plugin endpoint definition
+        - `richmessage.lua` - Plugin implementation
+        - `README.md` - Documentation
+        - `LICENSE` - MIT License
+        
+        ### Requirements
+        - signal-cli-rest-api v0.60+ with plugin support enabled (`ENABLE_PLUGINS=true`)
+        
+        ### Quick Start
+        1. Copy files to your plugins directory
+        2. Mount plugins directory in Docker: `./plugins:/plugins`
+        3. Enable plugins: `ENABLE_PLUGINS=true`
+        4. Restart signal-cli-rest-api
+        5. Test: `curl -X POST http://localhost:8080/v1/plugins/rich-message/+YOUR_NUMBER ...`
+        
+        See README.md for full documentation.
+        EOF
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Signal Rich Message Plugin ${{ steps.get_version.outputs.VERSION }}
+        body_path: release_notes.md
+        files: |
+          release/*.tar.gz
+          release/*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload artifact for debugging
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-files
+        path: release/
