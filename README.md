@@ -1,6 +1,6 @@
 # Signal CLI Rich Message Plugin
 
-A powerful plugin for [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) that enables sending rich messages with images, formatted text, and clickable URLs.
+A small plugin for [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) that enables sending rich messages with images, formatted text, and clickable URLs.
 
 ## Features
 
@@ -226,62 +226,6 @@ Use the provided test script:
 ./scripts/manual_test.sh http://localhost:8080 +1234567890
 ```
 
-### Test Structure
-
-```
-tests/
-├── unit/                      # Lua unit tests (Busted)
-│   ├── helpers/
-│   │   ├── http_mock.lua     # HTTP mocking utilities
-│   │   └── json.lua          # JSON implementation for tests
-│   └── richmessage_spec.lua  # 17 unit tests
-├── integration/               # Bash integration tests (BATS)
-│   ├── richmessage.bats      # 9 integration tests
-│   ├── docker-compose.test.yml
-│   └── test_api.sh           # Legacy shell script (deprecated)
-└── helpers/
-    └── test_helper.sh        # Shared bash test utilities
-```
-
-## Architecture
-
-```
-┌─────────────┐     POST /v1/plugins/rich-message/+NUMBER     ┌─────────────┐
-│   Client    │ ────────────────────────────────────────────────→ │   Plugin    │
-│  (Sender)   │    {                                              │   (Lua)     │
-│             │      image_url: "https://.../img.jpg",            │             │
-│             │      text: "Hello **bold** _italic_",             │             │
-│             │      url: "https://example.com",                  │             │
-│             │      url_alias: "Read more"                       │             │
-│             │    }                                              │             │
-└─────────────┘                                                   └──────┬──────┘
-                                                                          │
-                                                                          ↓
-                                                                 ┌────────────────┐
-                                                                 │ 1. Validate    │
-                                                                 │    input       │
-                                                                 │ 2. Check image │
-                                                                 │    format/size │
-                                                                 │ 3. Download    │
-                                                                 │    image       │
-                                                                 │ 4. Base64      │
-                                                                 │    encode      │
-                                                                 │ 5. Format msg  │
-                                                                 │ 6. Call /send  │
-                                                                 └───────┬────────┘
-                                                                         │
-                                                                         ↓ POST /v2/send
-                                                                 ┌────────────────┐
-                                                                 │ signal-cli-rest│
-                                                                 │    -api        │
-                                                                 └───────┬────────┘
-                                                                         │
-                                                                         ↓
-                                                                 ┌────────────────┐
-                                                                 │ Signal Network │
-                                                                 └────────────────┘
-```
-
 ## Error Handling
 
 The plugin returns appropriate HTTP status codes:
@@ -376,38 +320,13 @@ end)
 6. Push: `git push origin feature/my-feature`
 7. Submit a pull request
 
-## Versioning
-
-This project follows [Semantic Versioning](https://semver.org/) (SemVer):
-
-- **MAJOR** version (X.y.z) - Breaking changes to the API
-- **MINOR** version (x.Y.z) - New features, backwards compatible
-- **PATCH** version (x.y.Z) - Bug fixes, backwards compatible
-
-### Current Version
-
-Check the latest release on [GitHub Releases](https://github.com/lkshrk/signal-cli-rich-message-plugin/releases).
-
 ### Creating a Release
 
 We use **git tags** for versioning with an automated release script:
 
 ```bash
-# Make the script executable (first time only)
-chmod +x scripts/release.sh
-
-# Create a release (automatically generates changelog from commits)
-./scripts/release.sh patch   # 1.0.0 → 1.0.1 (bug fixes)
-./scripts/release.sh minor   # 1.0.0 → 1.1.0 (new features)
-./scripts/release.sh major   # 1.0.0 → 2.0.0 (breaking changes)
+./scripts/release.sh <patch,minor,major>
 ```
-
-**What the script does:**
-1. ✅ Reads current version from latest git tag
-2. ✅ Calculates new version based on SemVer
-3. ✅ Generates changelog from commit messages since last tag
-4. ✅ Creates annotated git tag with changelog
-5. ✅ Pushes to trigger GitHub Actions release
 
 **Manual release (if needed):**
 ```bash
@@ -437,4 +356,3 @@ MIT License - see LICENSE file for details
 
 - 🐛 **Bug Reports**: Open an issue on GitHub
 - 💡 **Feature Requests**: Open an issue with the "feature request" label
-- 📖 **Documentation**: Check the [Wiki](../../wiki) for more examples

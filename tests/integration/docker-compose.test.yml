@@ -20,22 +20,21 @@ services:
     networks:
       - test-network
 
-  # Test runner with BATS
+  # Test runner with curl and bash
   test-runner:
-    image: bats/bats:latest
+    image: curlimages/curl:latest
     container_name: test-runner
     depends_on:
       signal-api:
         condition: service_healthy
     volumes:
-      - ../helpers:/tests/helpers:ro
-      - .:/tests/integration:ro
+      - ./test_api.sh:/test_api.sh:ro
     environment:
       - API_URL=http://signal-api:8080
       - SENDER_NUMBER=+1234567890
       - RECIPIENT=+0987654321
-    working_dir: /tests
-    command: ["bats", "integration/richmessage.bats"]
+    working_dir: /
+    entrypoint: ["/bin/sh", "/test_api.sh"]
     networks:
       - test-network
 
