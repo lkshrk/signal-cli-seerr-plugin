@@ -1,6 +1,6 @@
 return {
   _all = {
-    coverage = true,
+    coverage = false,
     lpath = "./plugins/?.lua;./tests/unit/helpers/?.lua;./tests/unit/?.lua",
     cpath = "",
     verbose = true,

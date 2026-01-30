@@ -1,12 +1,12 @@
-# Signal CLI Rich Message Plugin
+# Signal CLI API rich message plugin
 
-A small plugin for [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) that enables sending rich messages with images, formatted text, and clickable URLs.
+A small plugin for [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) that enables sending rich messages with images, formatted text, and structured data.
 
 ## Features
 
 - 📸 **Image Attachments** - Automatically downloads and attaches images from URLs
 - 📝 **Text Formatting** - Supports bold, italic, code, strikethrough, and spoiler formatting
-- 🔗 **URL Support** - Optional URLs with custom display text
+- 📋 **Structured Extras** - Add labeled fields with name/value pairs
 - 🛡️ **Validation** - Image format validation (JPEG, PNG, GIF, WebP) and 5MB size limit
 - ⚡ **Signal Native** - Uses `text_mode: "styled"` for native Signal formatting
 - 🧪 **Well Tested** - Comprehensive unit and integration tests
@@ -22,13 +22,13 @@ A small plugin for [signal-cli-rest-api](https://github.com/bbernhard/signal-cli
 
 #### Option 1: Download from GitHub Releases (Recommended)
 
-1. **Download the latest release:**
+**Download the latest release:**
 ```bash
 curl -L -o richmessage-plugin.tar.gz \
-  https://github.com/lkshrk/signal-cli-rich-message-plugin/releases/latest/download/signal-richmessage-plugin-v1.0.0.tar.gz
+  https://github.com/lkshrk/signal-cli-rich-message-plugin/releases/latest/download/signal-richmessage-plugin.tar.gz
 ```
 
-2. **Extract to your plugins directory:**
+**Extract to your plugins directory:**
 ```bash
 tar -xzf richmessage-plugin.tar.gz -C /path/to/your/plugins/
 # Or manually copy the two files:
@@ -70,20 +70,22 @@ docker-compose up -d
 ### API Endpoint
 
 ```
-POST /v1/plugins/rich-message/:number
+POST /v1/plugins/rich-message
 ```
-
-Where `:number` is your registered Signal phone number.
 
 ### Request Format
 
 ```json
 {
   "recipient": "+0987654321",
+  "sender": "+1234567890",
+  "title": "Breaking News",
   "image_url": "https://example.com/image.jpg",
   "text": "Check out this **amazing** photo!",
-  "url": "https://example.com/article",
-  "url_alias": "Read full story"
+  "extra": [
+    {"name": "Status", "value": "Active"},
+    {"name": "Priority", "value": "High"}
+  ]
 }
 ```
 
@@ -92,10 +94,11 @@ Where `:number` is your registered Signal phone number.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `recipient` | string | Yes | Phone number of recipient (with country code) |
-| `image_url` | string | Yes | Public URL of image to attach |
+| `sender` | string | Yes | Your registered Signal phone number |
+| `title` | string | No | Bold title displayed at the top |
+| `image_url` | string | No | Public URL of image to attach |
 | `text` | string | No | Message text with formatting support |
-| `url` | string | No | Optional URL to append to message |
-| `url_alias` | string | No | Display text for the URL |
+| `extra` | object[] | No | Array of {name, value} objects displayed as **name:** value |
 
 ### Text Formatting
 
@@ -109,49 +112,44 @@ Use markdown-style syntax in your text:
 
 ### Example Requests
 
-**Simple image message:**
+**Text-only message (no image):**
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "recipient": "+0987654321",
-    "image_url": "https://example.com/photo.jpg"
+    "sender": "+1234567890",
+    "text": "Hello **there**! How are you?"
   }' \
-  http://localhost:8080/v1/plugins/rich-message/+1234567890
+  http://localhost:8080/v1/plugins/rich-message
 ```
 
-**Formatted text with image:**
+**Message with image, title, and extras:**
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "recipient": "+0987654321",
-    "image_url": "https://example.com/promo.jpg",
-    "text": "New **sale** starts *today*! Don't miss out!"
+    "sender": "+1234567890",
+    "title": "Breaking News",
+    "image_url": "https://example.com/news.jpg",
+    "text": "Major update just announced!",
+    "extra": [
+      {"name": "Source", "value": "News Corp"},
+      {"name": "Time", "value": "14:30 UTC"}
+    ]
   }' \
-  http://localhost:8080/v1/plugins/rich-message/+1234567890
-```
-
-**Complete rich message with URL:**
-```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{
-    "recipient": "+0987654321",
-    "image_url": "https://example.com/article.jpg",
-    "text": "Check out this **breaking news**!",
-    "url": "https://news.example.com/story",
-    "url_alias": "Read full story"
-  }' \
-  http://localhost:8080/v1/plugins/rich-message/+1234567890
+  http://localhost:8080/v1/plugins/rich-message
 ```
 
 This produces:
 ```
-Check out this breaking news!
+**Breaking News**
 
-Read full story:
-https://news.example.com/story
+Major update just announced!
+
+**Source:** News Corp
+**Time:** 14:30 UTC
 ```
 
 ## Image Requirements
@@ -223,7 +221,7 @@ docker-compose -f docker-compose.test.yml logs -f test-runner
 Use the provided test script:
 
 ```bash
-./scripts/manual_test.sh http://localhost:8080 +1234567890
+./scripts/manual_test.sh http://localhost:8080 +1234567890 +0987654321
 ```
 
 ## Error Handling
@@ -233,7 +231,7 @@ The plugin returns appropriate HTTP status codes:
 | Scenario | HTTP Code | Message |
 |----------|-----------|---------|
 | Missing `recipient` | 400 | "recipient is required" |
-| Missing `image_url` | 400 | "image_url is required" |
+| Missing `sender` | 400 | "sender is required" |
 | Invalid JSON | 400 | "Invalid JSON in request body" |
 | Unsupported format | 400 | "Unsupported image format: X. Supported: image/jpeg, image/png..." |
 | Image > 5MB | 400 | "Image exceeds 5MB limit (size: X MB)" |

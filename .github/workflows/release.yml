@@ -1,27 +1,56 @@
 name: Release Plugin
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.0.0
+  workflow_run:
+    workflows: ["Plugin CI"]
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  check-and-release:
     runs-on: ubuntu-latest
     name: Create Release
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.workflow_run.head_sha }}
     
-    - name: Get version from tag
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    - name: Check for version tag
+      id: check_tag
+      run: |
+        COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+        echo "Checking for tags on commit $COMMIT_SHA"
+        
+        # Get tags pointing to this commit
+        TAGS=$(git tag -l "v*" --points-at "$COMMIT_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+        
+        if [ -n "$TAGS" ]; then
+          VERSION=$(echo "$TAGS" | head -1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "has_tag=true" >> $GITHUB_OUTPUT
+          echo "Found version tag: $VERSION"
+        else
+          echo "has_tag=false" >> $GITHUB_OUTPUT
+          echo "No version tag found"
+        fi
+    
+    - name: Skip if no tag
+      if: ${{ steps.check_tag.outputs.has_tag != 'true' }}
+      run: |
+        echo "No version tag on this commit. Skipping release."
+        exit 0
     
     - name: Create release directory
+      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       run: |
         mkdir -p release/signal-richmessage-plugin
         cp plugins/richmessage.def release/signal-richmessage-plugin/
@@ -30,22 +59,24 @@ jobs:
         cp LICENSE release/signal-richmessage-plugin/
     
     - name: Create release archive
+      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       run: |
         cd release
-        tar -czf signal-richmessage-plugin-${{ steps.get_version.outputs.VERSION }}.tar.gz signal-richmessage-plugin/
-        zip -r signal-richmessage-plugin-${{ steps.get_version.outputs.VERSION }}.zip signal-richmessage-plugin/
+        tar -czf signal-richmessage-plugin.tar.gz signal-richmessage-plugin/
+        zip -r signal-richmessage-plugin.zip signal-richmessage-plugin/
     
     - name: Generate release notes
+      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       run: |
         cat > release_notes.md << 'EOF'
-        ## Signal CLI Rich Message Plugin ${{ steps.get_version.outputs.VERSION }}
+        ## Signal CLI Rich Message Plugin ${{ steps.check_tag.outputs.version }}
         
         ### Installation
         
         **Option 1: Download and extract:**
         ```bash
-        # Download the release
-        curl -L -o plugin.tar.gz https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.VERSION }}/signal-richmessage-plugin-${{ steps.get_version.outputs.VERSION }}.tar.gz
+        # Download the latest release
+        curl -L -o plugin.tar.gz https://github.com/${{ github.repository }}/releases/download/latest/signal-richmessage-plugin.tar.gz
         
         # Extract to your plugins directory
         tar -xzf plugin.tar.gz -C /path/to/your/plugins/
@@ -54,7 +85,7 @@ jobs:
         **Option 2: Direct copy:**
         ```bash
         # Copy the two plugin files to your signal-cli-rest-api plugins directory
-cp richmessage.def /path/to/plugins/
+        cp richmessage.def /path/to/plugins/
         cp richmessage.lua /path/to/plugins/
         ```
         
@@ -72,24 +103,39 @@ cp richmessage.def /path/to/plugins/
         2. Mount plugins directory in Docker: `./plugins:/plugins`
         3. Enable plugins: `ENABLE_PLUGINS=true`
         4. Restart signal-cli-rest-api
-        5. Test: `curl -X POST http://localhost:8080/v1/plugins/rich-message/+YOUR_NUMBER ...`
+        5. Test: `curl -X POST http://localhost:8080/v1/plugins/rich-message ...`
         
         See README.md for full documentation.
         EOF
     
     - name: Create GitHub Release
+      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       uses: softprops/action-gh-release@v1
       with:
-        name: Signal Rich Message Plugin ${{ steps.get_version.outputs.VERSION }}
+        name: ${{ steps.check_tag.outputs.version }}
+        tag_name: ${{ steps.check_tag.outputs.version }}
         body_path: release_notes.md
         files: |
-          release/*.tar.gz
-          release/*.zip
+          release/signal-richmessage-plugin.tar.gz
+          release/signal-richmessage-plugin.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Upload artifact for debugging
+      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: release-files
         path: release/
+    
+    - name: Update latest tag
+      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        
+        git tag -d latest 2>/dev/null || true
+        git push origin :refs/tags/latest 2>/dev/null || true
+        
+        git tag -a latest -m "Latest release: ${{ steps.check_tag.outputs.version }}"
+        git push origin latest

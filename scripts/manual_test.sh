@@ -39,7 +39,7 @@ run_test() {
     log_info "Test: $test_name"
     
     response=$(http_request "POST" \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}" \
+        "${API_URL}/v1/plugins/rich-message" \
         "$payload")
     
     http_code=$(get_http_code "$response")
@@ -64,7 +64,7 @@ echo "----------------------------------------"
 
 # Test 1: Simple message
 run_test "Simple message with image" '{
-    "recipient": "'"$RECIPIENT"'",
+    "recipient": "'"$RECIPIENT"'", "sender": "'"$SENDER_NUMBER"'",
     "image_url": "https://httpbin.org/image/jpeg"
 }'
 
@@ -73,7 +73,7 @@ echo "----------------------------------------"
 
 # Test 2: Formatted text
 run_test "Formatted text (bold, italic)" '{
-    "recipient": "'"$RECIPIENT"'",
+    "recipient": "'"$RECIPIENT"'", "sender": "'"$SENDER_NUMBER"'",
     "image_url": "https://httpbin.org/image/jpeg",
     "text": "This is **bold** and *italic* text"
 }'
@@ -83,7 +83,7 @@ echo "----------------------------------------"
 
 # Test 3: URL with alias
 run_test "URL with alias" '{
-    "recipient": "'"$RECIPIENT"'",
+    "recipient": "'"$RECIPIENT"'", "sender": "'"$SENDER_NUMBER"'",
     "image_url": "https://httpbin.org/image/jpeg",
     "text": "Check this out!",
     "url": "https://example.com",
@@ -93,7 +93,19 @@ run_test "URL with alias" '{
 echo ""
 echo "----------------------------------------"
 
-# Test 4: Missing recipient (should fail)
+# Test 4: Message with title
+run_test "Message with title" '{
+    "recipient": "'"$RECIPIENT"'", "sender": "'"$SENDER_NUMBER"'",
+    "title": "Breaking News",
+    "image_url": "https://httpbin.org/image/jpeg",
+    "text": "Major update just announced!",
+    "url": "https://example.com/story"
+}'
+
+echo ""
+echo "----------------------------------------"
+
+# Test 5: Missing recipient (should fail)
 run_test "Missing recipient (expect error)" '{
     "image_url": "https://httpbin.org/image/jpeg"
 }' "true"
@@ -101,23 +113,24 @@ run_test "Missing recipient (expect error)" '{
 echo ""
 echo "----------------------------------------"
 
-# Test 5: Missing image URL (should fail)
-run_test "Missing image_url (expect error)" '{
-    "recipient": "'"$RECIPIENT"'"
-}' "true"
+# Test 6: Text-only message (no image - should succeed)
+run_test "Text-only message (no image)" '{
+    "recipient": "'"$RECIPIENT"'", "sender": "'"$SENDER_NUMBER"'",
+    "text": "Hello **world**!"
+}' "false"
 
 echo ""
 echo "----------------------------------------"
 
-# Test 6: Invalid JSON (should fail)
+# Test 8: Invalid JSON (should fail)
 run_test "Invalid JSON (expect error)" 'not valid json' "true"
 
 echo ""
 echo "----------------------------------------"
 
-# Test 7: 404 image (should fail)
+# Test 9: 404 image (should fail)
 run_test "404 image URL (expect error)" '{
-    "recipient": "'"$RECIPIENT"'",
+    "recipient": "'"$RECIPIENT"'", "sender": "'"$SENDER_NUMBER"'",
     "image_url": "https://httpbin.org/status/404"
 }' "true"
 

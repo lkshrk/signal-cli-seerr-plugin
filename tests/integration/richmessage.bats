@@ -22,8 +22,8 @@ setup() {
     run curl -s -o /dev/null -w "%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
-        -d '{"recipient": "'"$RECIPIENT"'", "image_url": "https://httpbin.org/image/jpeg"}' \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}"
+        -d '{"recipient": "'"$RECIPIENT"'", "sender": "'"$SENDER_NUMBER"'", "image_url": "https://httpbin.org/image/jpeg"}' \
+        "${API_URL}/v1/plugins/rich-message"
     [ "$output" -eq 400 ] || [ "$output" -eq 200 ] || [ "$output" -eq 500 ]
 }
 
@@ -32,7 +32,7 @@ setup() {
         -X POST \
         -H "Content-Type: application/json" \
         -d '{"image_url": "https://httpbin.org/image/jpeg"}' \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}"
+        "${API_URL}/v1/plugins/rich-message"
     
     http_code=$(echo "$output" | tail -n1)
     body=$(echo "$output" | sed '$d')
@@ -41,18 +41,18 @@ setup() {
     [[ "$body" == *"recipient"* ]]
 }
 
-@test "Reject missing image_url" {
+@test "Accept message without image_url" {
     run curl -s -w "\n%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
-        -d '{"recipient": "'"$RECIPIENT"'"}' \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}"
+        -d '{"recipient": "'"$RECIPIENT"'", "sender": "'"$SENDER_NUMBER"'", "text": "Hello **world**!"}' \
+        "${API_URL}/v1/plugins/rich-message"
     
     http_code=$(echo "$output" | tail -n1)
     body=$(echo "$output" | sed '$d')
     
-    [ "$http_code" -eq 400 ]
-    [[ "$body" == *"image_url"* ]]
+    # Allow any response since we can't guarantee signal-cli is properly configured
+    [ "$http_code" -eq 400 ] || [ "$http_code" -eq 200 ] || [ "$http_code" -eq 500 ]
 }
 
 @test "Reject invalid JSON" {
@@ -60,7 +60,7 @@ setup() {
         -X POST \
         -H "Content-Type: application/json" \
         -d 'not valid json' \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}"
+        "${API_URL}/v1/plugins/rich-message"
     
     http_code=$(echo "$output" | tail -n1)
     [ "$http_code" -eq 400 ]
@@ -72,26 +72,27 @@ setup() {
         -H "Content-Type: application/json" \
         -d '{
             "recipient": "'"$RECIPIENT"'",
+            "sender": "'"$SENDER_NUMBER"'",
             "image_url": "https://httpbin.org/image/jpeg",
             "text": "Test with **bold** and *italic*"
         }' \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}"
+        "${API_URL}/v1/plugins/rich-message"
     
     [ "$output" -eq 400 ] || [ "$output" -eq 200 ] || [ "$output" -eq 500 ]
 }
 
-@test "Accept URL with alias" {
+@test "Accept message with title" {
     run curl -s -o /dev/null -w "%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
         -d '{
             "recipient": "'"$RECIPIENT"'",
+            "sender": "'"$SENDER_NUMBER"'",
+            "title": "Breaking News",
             "image_url": "https://httpbin.org/image/jpeg",
-            "text": "Check this out!",
-            "url": "https://example.com/article",
-            "url_alias": "Read full article"
+            "text": "Major update!"
         }' \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}"
+        "${API_URL}/v1/plugins/rich-message"
     
     [ "$output" -eq 400 ] || [ "$output" -eq 200 ] || [ "$output" -eq 500 ]
 }
@@ -102,9 +103,10 @@ setup() {
         -H "Content-Type: application/json" \
         -d '{
             "recipient": "'"$RECIPIENT"'",
+            "sender": "'"$SENDER_NUMBER"'",
             "image_url": "https://httpbin.org/status/404"
         }' \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}"
+        "${API_URL}/v1/plugins/rich-message"
     
     http_code=$(echo "$output" | tail -n1)
     [ "$http_code" -eq 400 ]
@@ -116,9 +118,10 @@ setup() {
         -H "Content-Type: application/json" \
         -d '{
             "recipient": "'"$RECIPIENT"'",
+            "sender": "'"$SENDER_NUMBER"'",
             "image_url": "https://httpbin.org/image/svg"
         }' \
-        "${API_URL}/v1/plugins/rich-message/${SENDER_NUMBER}"
+        "${API_URL}/v1/plugins/rich-message"
     
     http_code=$(echo "$output" | tail -n1)
     [ "$http_code" -eq 400 ]

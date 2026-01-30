@@ -76,9 +76,10 @@ describe("Rich Message Plugin", function()
     it("should reject missing recipient", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
+          sender = "+1234567890",
           image_url = "https://example.com/image.jpg"
         }),
-        {number = "+1234567890"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -88,25 +89,28 @@ describe("Rich Message Plugin", function()
       assert.is_true(response.error:find("recipient") ~= nil)
     end)
     
-    it("should reject missing image_url", function()
+    it("should accept message without image_url", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
-          recipient = "+1234567890"
+          recipient = "+1234567890",
+          sender = "+0987654321",
+          sender = "+1234567890",
+          text = "Hello **world**!"
         }),
-        {number = "+1234567890"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
       
-      assert.are.equal(400, plugin_output.httpStatusCode)
+      assert.are.equal(200, plugin_output.httpStatusCode)
       local response = json.decode(plugin_output.payload)
-      assert.is_true(response.error:find("image_url") ~= nil)
+      assert.is_nil(response.error)
     end)
     
     it("should reject invalid JSON", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         "not valid json",
-        {number = "+1234567890"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -114,22 +118,51 @@ describe("Rich Message Plugin", function()
       assert.are.equal(400, plugin_output.httpStatusCode)
       local response = json.decode(plugin_output.payload)
       assert.are.equal("Invalid JSON in request body", response.error)
+      assert.are.equal("not valid json", response.request_body)
     end)
     
-    it("should reject missing sender number", function()
+    it("should include request body in error responses", function()
+      local input_json = json.encode({
+        recipient = "+1234567890",
+        sender = "+0987654321",
+        image_url = "https://invalid-format.com/image.bmp"
+      })
+      
+      _G.pluginInputData = http_mock.create_plugin_input(
+        input_json,
+        {}
+      )
+      
+      mock_http.add_response("HEAD", "https://invalid-format.com/image.bmp", {
+        status_code = 200,
+        headers = {["Content-Type"] = "image/bmp", ["Content-Length"] = "1024"},
+        body = ""
+      })
+      
+      dofile("plugins/richmessage.lua")
+      
+      assert.are.equal(400, plugin_output.httpStatusCode)
+      local response = json.decode(plugin_output.payload)
+      assert.is_not_nil(response.request_body)
+      assert.is_true(response.request_body:find("invalid%-format%.com") ~= nil)
+    end)
+    
+    it("should reject missing sender", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
           image_url = "https://example.com/image.jpg"
         }),
-        {}  -- Empty params
+        {}
       )
       
       dofile("plugins/richmessage.lua")
       
       assert.are.equal(400, plugin_output.httpStatusCode)
       local response = json.decode(plugin_output.payload)
-      assert.is_true(response.error:find("Sender number") ~= nil)
+      assert.is_true(response.error:find("sender") ~= nil)
+      assert.is_not_nil(response.request_body)
+      assert.is_true(response.request_body:find("recipient") ~= nil)
     end)
   end)
   
@@ -155,9 +188,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.jpg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -186,9 +220,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.png"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -206,9 +241,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.svg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -232,9 +268,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/large.jpg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -267,9 +304,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/max.jpg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -302,10 +340,11 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.jpg",
           text = "Hello **world**!"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -318,8 +357,8 @@ describe("Rich Message Plugin", function()
       assert.are.equal("Hello **world**!", payload.message)
       assert.are.equal("styled", payload.text_mode)
     end)
-    
-    it("should format message with URL alias", function()
+
+    it("should format message with title", function()
       mock_http.add_response("HEAD", "https://example.com/image.jpg", {
         status_code = 200,
         headers = {["Content-Type"] = "image/jpeg", ["Content-Length"] = "1024"},
@@ -340,12 +379,12 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.jpg",
-          text = "Check this out!",
-          url = "https://example.com/article",
-          url_alias = "Read more"
+          title = "Breaking News",
+          text = "Major update!"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -354,47 +393,142 @@ describe("Rich Message Plugin", function()
       local last_call = calls[#calls]
       local payload = json.decode(last_call.body)
       
-      assert.is_true(payload.message:find("Check this out!") ~= nil)
-      assert.is_true(payload.message:find("Read more:") ~= nil)
-      assert.is_true(payload.message:find("https://example.com/article") ~= nil)
+      assert.is_true(payload.message:find("**Breaking News**") ~= nil)
+      assert.is_true(payload.message:find("Major update!") ~= nil)
     end)
     
-    it("should format message with URL but no alias", function()
+    it("should format message with extra content", function()
       mock_http.add_response("HEAD", "https://example.com/image.jpg", {
         status_code = 200,
         headers = {["Content-Type"] = "image/jpeg", ["Content-Length"] = "1024"},
         body = ""
       })
-      
+
       mock_http.add_response("GET", "https://example.com/image.jpg", {
         status_code = 200,
         headers = {["Content-Type"] = "image/jpeg"},
         body = "fake image"
       })
-      
+
       mock_http.add_response("POST", "http://127.0.0.1:8080/v2/send", {
         status_code = 200,
         body = '{"timestamp": 1234567890}'
       })
-      
+
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.jpg",
-          url = "https://example.com/link"
+          text = "Main message",
+          extra = {{name = "Details", value = "Additional information"}}
         }),
-        {number = "+0987654321"}
+        {}
       )
-      
+
       dofile("plugins/richmessage.lua")
-      
+
       local calls = mock_http.get_calls()
       local last_call = calls[#calls]
       local payload = json.decode(last_call.body)
-      
-      assert.is_true(payload.message:find("https://example.com/link") ~= nil)
-      -- When no alias, URL should be on its own without "alias:" prefix
-      assert.is_false(payload.message:find("https://example.com/link:") ~= nil)
+
+      print("Message content:", payload.message)
+      assert.is_true(payload.message:find("Main message") ~= nil)
+      assert.is_true(payload.message:find("Details:") ~= nil)
+    end)
+
+    it("should format message with multiple extra items", function()
+      mock_http.add_response("HEAD", "https://example.com/image.jpg", {
+        status_code = 200,
+        headers = {["Content-Type"] = "image/jpeg", ["Content-Length"] = "1024"},
+        body = ""
+      })
+
+      mock_http.add_response("GET", "https://example.com/image.jpg", {
+        status_code = 200,
+        headers = {["Content-Type"] = "image/jpeg"},
+        body = "fake image"
+      })
+
+      mock_http.add_response("POST", "http://127.0.0.1:8080/v2/send", {
+        status_code = 200,
+        body = '{"timestamp": 1234567890}'
+      })
+
+      _G.pluginInputData = http_mock.create_plugin_input(
+        json.encode({
+          recipient = "+1234567890",
+          sender = "+0987654321",
+          image_url = "https://example.com/image.jpg",
+          text = "Main message",
+          extra = {
+            {name = "First", value = "First detail"},
+            {name = "Second", value = "Second detail"},
+            {name = "Third", value = "Third detail"}
+          }
+        }),
+        {}
+      )
+
+      dofile("plugins/richmessage.lua")
+
+      local calls = mock_http.get_calls()
+      local last_call = calls[#calls]
+      local payload = json.decode(last_call.body)
+
+      assert.is_true(payload.message:find("Main message") ~= nil)
+      assert.is_true(payload.message:find("First:") ~= nil)
+      assert.is_true(payload.message:find("Second:") ~= nil)
+      assert.is_true(payload.message:find("Third:") ~= nil)
+    end)
+
+    it("should ignore extra items without name/value keys", function()
+      mock_http.add_response("HEAD", "https://example.com/image.jpg", {
+        status_code = 200,
+        headers = {["Content-Type"] = "image/jpeg", ["Content-Length"] = "1024"},
+        body = ""
+      })
+
+      mock_http.add_response("GET", "https://example.com/image.jpg", {
+        status_code = 200,
+        headers = {["Content-Type"] = "image/jpeg"},
+        body = "fake image"
+      })
+
+      mock_http.add_response("POST", "http://127.0.0.1:8080/v2/send", {
+        status_code = 200,
+        body = '{"timestamp": 1234567890}'
+      })
+
+      _G.pluginInputData = http_mock.create_plugin_input(
+        json.encode({
+          recipient = "+1234567890",
+          sender = "+0987654321",
+          image_url = "https://example.com/image.jpg",
+          text = "Main message",
+          extra = {
+            {name = "Valid", value = "This should appear"},
+            {invalid = "no name/value"},
+            "just a string",
+            {name = "Another", value = "This should also appear"}
+          }
+        }),
+        {}
+      )
+
+      dofile("plugins/richmessage.lua")
+
+      local calls = mock_http.get_calls()
+      local last_call = calls[#calls]
+      local payload = json.decode(last_call.body)
+
+      assert.is_true(payload.message:find("Main message") ~= nil)
+      -- Valid items with name/value should appear
+      assert.is_true(payload.message:find("Valid:") ~= nil)
+      assert.is_true(payload.message:find("Another:") ~= nil)
+      -- Invalid items should not appear
+      assert.is_false(payload.message:find("invalid") ~= nil)
+      assert.is_false(payload.message:find("just a string") ~= nil)
     end)
   end)
   
@@ -409,9 +543,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/missing.jpg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -432,9 +567,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/error.jpg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -465,9 +601,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.jpg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -498,9 +635,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.jpg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")
@@ -548,9 +686,10 @@ describe("Rich Message Plugin", function()
       _G.pluginInputData = http_mock.create_plugin_input(
         json.encode({
           recipient = "+1234567890",
+          sender = "+0987654321",
           image_url = "https://example.com/image.jpg"
         }),
-        {number = "+0987654321"}
+        {}
       )
       
       dofile("plugins/richmessage.lua")

@@ -2,16 +2,11 @@ name: Plugin CI
 
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'plugins/**'
-      - 'tests/**'
-      - '.github/workflows/**'
+    branches:
+      - '**'
   pull_request:
-    branches: [ main ]
-    paths:
-      - 'plugins/**'
-      - 'tests/**'
+    branches:
+      - '**'
 
 jobs:
   # Unit Tests with Busted
@@ -219,7 +214,7 @@ jobs:
     - name: Check documentation is up to date
       run: |
         # Check if plugin signature is documented
-        if ! grep -q "rich-message/:number" README.md; then
+        if ! grep -q "rich-message" README.md; then
           echo "⚠️  Warning: Endpoint not documented in README.md"
         fi
         
@@ -228,8 +223,8 @@ jobs:
           echo "⚠️  Warning: 'recipient' field not documented"
         fi
         
-        if ! grep -q "image_url" README.md; then
-          echo "⚠️  Warning: 'image_url' field not documented"
+        if ! grep -q "sender" README.md; then
+          echo "⚠️  Warning: 'sender' field not documented"
         fi
         
         echo "✅ Documentation check complete"
