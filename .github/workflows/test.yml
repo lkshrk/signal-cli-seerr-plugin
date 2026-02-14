@@ -2,299 +2,67 @@ name: Plugin CI
 
 on:
   push:
-    branches:
-      - '**'
+    branches: ["**"]
   pull_request:
-    branches:
-      - '**'
+    branches: ["**"]
 
 jobs:
-  # Unit Tests with Busted
-  unit-tests:
+  test-and-build:
     runs-on: ubuntu-latest
-    name: Unit Tests (Busted)
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Lua
-      uses: leafo/gh-actions-lua@v10
-      with:
-        luaVersion: "5.4"
-    
-    - name: Setup LuaRocks
-      uses: leafo/gh-actions-luarocks@v4
-    
-    - name: Install dependencies
-      run: |
-        luarocks install busted
-        luarocks install luacov
-        luarocks install lua-cjson
-    
-    - name: Run unit tests
-      run: |
-        busted tests/unit/ --verbose --coverage
-    
-    - name: Upload coverage report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: coverage-report
-        path: luacov.report.out
-    
-    - name: Comment test results
-      if: github.event_name == 'pull_request'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          const path = 'luacov.report.out';
-          
-          if (fs.existsSync(path)) {
-            const coverage = fs.readFileSync(path, 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `📊 **Test Coverage Report**\n\n\`\`\`\n${coverage.substring(0, 65000)}\n\`\`\``
-            });
-          }
 
-  # BATS Integration Tests
-  bats-tests:
-    runs-on: ubuntu-latest
-    name: Integration Tests (BATS)
-    needs: unit-tests
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Install BATS
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y bats
-    
-    - name: Start signal-cli-rest-api
-      run: |
-        docker compose -f docker-compose.yml up -d
-        # Wait for API to be ready
-        for i in {1..30}; do
-          if curl -s http://localhost:8080/v1/about > /dev/null 2>&1; then
-            echo "API is ready!"
-            break
-          fi
-          sleep 1
-        done
-    
-    - name: Run BATS tests
-      run: |
-        export API_URL=http://localhost:8080
-        export SENDER_NUMBER=+1234567890
-        export RECIPIENT=+0987654321
-        bats tests/integration/richmessage.bats
-    
-    - name: Cleanup
-      if: always()
-      run: |
-        docker compose -f docker-compose.yml down -v
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  # Docker Integration Tests
-  docker-integration-tests:
-    runs-on: ubuntu-latest
-    name: Integration Tests (Docker Compose)
-    needs: unit-tests
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Run Docker integration tests
-      working-directory: tests/integration
-      run: |
-        docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
-    
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: integration-test-results
-        path: tests/integration/test-results/
-    
-    - name: Cleanup
-      if: always()
-      working-directory: tests/integration
-      run: |
-        docker compose -f docker-compose.test.yml down -v
+      - name: Setup Lua and LuaCC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4 luarocks
+          sudo luarocks install luacc
 
-  # Lua Syntax Check
-  lint:
-    runs-on: ubuntu-latest
-    name: Lua Lint
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Lua
-      uses: leafo/gh-actions-lua@v10
-      with:
-        luaVersion: "5.4"
-    
-    - name: Setup LuaRocks
-      uses: leafo/gh-actions-luarocks@v4
-    
-    - name: Install luacheck
-      run: |
-        luarocks install luacheck
-    
-    - name: Run luacheck
-      run: |
-        luacheck plugins/ --globals pluginInputData pluginOutputData http json --ignore "631" || true
+      - name: Run lint
+        run: make lint
 
-  # Validate plugin definition
-  validate-plugin:
-    runs-on: ubuntu-latest
-    name: Validate Plugin Files
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Lua
-      uses: leafo/gh-actions-lua@v10
-      with:
-        luaVersion: "5.4"
-    
-    - name: Check plugin files exist
-      run: |
-        test -f plugins/richmessage.def || (echo "richmessage.def not found!" && exit 1)
-        test -f plugins/richmessage.lua || (echo "richmessage.lua not found!" && exit 1)
-        echo "✅ Plugin files exist"
-    
-    - name: Validate YAML syntax
-      run: |
-        python3 -c "import yaml; yaml.safe_load(open('plugins/richmessage.def'))" || (echo "Invalid YAML in richmessage.def" && exit 1)
-        echo "✅ Plugin definition is valid YAML"
-    
-    - name: Check Lua syntax
-      run: |
-        luac -p plugins/richmessage.lua || (echo "Lua syntax error" && exit 1)
-        echo "✅ Plugin script has valid Lua syntax"
-    
-    - name: Verify file naming
-      run: |
-        DEF_BASENAME=$(basename plugins/richmessage.def .def)
-        LUA_BASENAME=$(basename plugins/richmessage.lua .lua)
-        if [ "$DEF_BASENAME" != "$LUA_BASENAME" ]; then
-          echo "❌ Plugin files must have matching base names!"
-          echo "   Found: $DEF_BASENAME.def and $LUA_BASENAME.lua"
-          exit 1
-        fi
-        echo "✅ Plugin file names match ($DEF_BASENAME)"
+      - name: Run unit tests
+        run: make test-unit
 
-  # Documentation check
-  docs-check:
-    runs-on: ubuntu-latest
-    name: Documentation Check
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Check README exists
-      run: |
-        test -f README.md || (echo "README.md not found!" && exit 1)
-        echo "✅ README.md exists"
-    
-    - name: Check documentation is up to date
-      run: |
-        # Check if plugin signature is documented
-        if ! grep -q "rich-message" README.md; then
-          echo "⚠️  Warning: Endpoint not documented in README.md"
-        fi
-        
-        # Check if required fields are documented
-        if ! grep -q "recipient" README.md; then
-          echo "⚠️  Warning: 'recipient' field not documented"
-        fi
-        
-        if ! grep -q "sender" README.md; then
-          echo "⚠️  Warning: 'sender' field not documented"
-        fi
-        
-        echo "✅ Documentation check complete"
+      - name: Build plugin
+        run: make build
 
-  # Security scan
-  security-scan:
-    runs-on: ubuntu-latest
-    name: Security Scan
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: Scan for secrets
-      uses: trufflesecurity/trufflehog@main
-      with:
-        path: ./
-        extra_args: --only-verified
+      - name: Validate bundled file
+        run: |
+          lua -e "assert(loadfile('dist/seerr-notification/seerr-notification.lua'))"
+          echo "✅ Bundle syntax valid"
 
-  # Release check (only on main)
-  release-check:
-    runs-on: ubuntu-latest
-    name: Release Ready Check
-    if: github.ref == 'refs/heads/main'
-    needs: [unit-tests, bats-tests, docker-integration-tests, validate-plugin, lint]
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Create release archive
-      run: |
-        mkdir -p release
-        cp plugins/richmessage.def release/
-        cp plugins/richmessage.lua release/
-        cp README.md release/
-        tar -czf signal-richmessage-plugin.tar.gz -C release .
-    
-    - name: Upload release artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: plugin-release
-        path: signal-richmessage-plugin.tar.gz
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-build
+          path: dist/seerr-notification/
+          retention-days: 14
 
-  # Summary
-  test-summary:
+  integration-tests:
+    needs: test-and-build
     runs-on: ubuntu-latest
-    name: Test Summary
-    needs: [unit-tests, bats-tests, docker-integration-tests, validate-plugin, lint, docs-check]
-    if: always()
-    
+
     steps:
-    - name: Create summary
-      run: |
-        echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Unit Tests | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| BATS Tests | ${{ needs.bats-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Docker Integration | ${{ needs.docker-integration-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Plugin Validation | ${{ needs.validate-plugin.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Lua Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Documentation | ${{ needs.docs-check.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        if [ "${{ needs.unit-tests.result }}" == "success" ] && [ "${{ needs.bats-tests.result }}" == "success" ] && [ "${{ needs.docker-integration-tests.result }}" == "success" ]; then
-          echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
-        fi
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-build
+          path: dist/seerr-notification
+
+      - name: Setup Bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Run integration tests
+        run: make test-integration
+        env:
+          SKIP_BUILD: "true"
+
+

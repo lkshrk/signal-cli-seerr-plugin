@@ -1,213 +1,53 @@
-# =============================================================================
 # Lua
-# =============================================================================
 *.lua~
 *.luac
 .luacov
 luacov.report.out
 luacov.stats.out
 
-# =============================================================================
-# Testing
-# =============================================================================
-tests/results/
-tests/integration/test-data/
-tests/integration/test-results/
+# LuaRocks
+.luarocks/
+*.rock
 
-# =============================================================================
+# Build Output
+dist/
+release/
+
+# Testing
+spec/results/
+spec/integration/test-data/
+spec/integration/test-results/
+
 # Docker
-# =============================================================================
 .docker/
 
-# =============================================================================
-# IDEs and Editors
-# =============================================================================
-
-# VS Code
+# IDEs
 .vscode/
-*.code-workspace
-.history/
-
-# JetBrains (IntelliJ, WebStorm, PhpStorm, etc.)
 .idea/
-*.iml
-*.iws
-*.ipr
-out/
-
-# Vim
 *.swp
 *.swo
 *~
-.vim/
 
-# Emacs
-*~
-.#*
-*.elc
-
-# Sublime Text
-*.sublime-project
-*.sublime-workspace
-
-# Atom
-.atom/
-
-# Eclipse
-.project
-.classpath
-.settings/
-
-# NetBeans
-nbproject/
-
-# Xcode
-*.xcodeproj/
-*.xcworkspace/
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
-
-# Visual Studio
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-.vs/
-
-# =============================================================================
-# Operating Systems
-# =============================================================================
-
-# macOS
+# OS
 .DS_Store
-.AppleDouble
-.LSOverride
-Icon
-._*
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-
-# Windows
 Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-ehthumbs_vista.db
-*.stackdump
-[Dd]esktop.ini
-$RECYCLE.BIN/
-*.cab
-*.msi
-*.msix
-*.msm
-*.msp
-*.lnk
 
-# Linux
-*~
-.nfs*
-
-# =============================================================================
 # Signal CLI data (contains sensitive info)
-# =============================================================================
 signal-cli-config/
 *.db
 
-# =============================================================================
 # Temporary files
-# =============================================================================
 *.tmp
 tmp/
-temp/
-*.temp
 *.cache
-cache/
 
-# =============================================================================
-# Release archives
-# =============================================================================
-release/
+# Archives
 *.tar.gz
 *.zip
-*.tar
-*.gz
-*.rar
-*.7z
 
-# =============================================================================
 # Logs
-# =============================================================================
 *.log
-logs/
-log/
 
-# =============================================================================
-# Environment files
-# =============================================================================
+# Environment
 .env
-.env.local
-.env.*.local
-.env.development
-.env.test
-.env.production
-
-# =============================================================================
-# Backup files
-# =============================================================================
-*.bak
-*.backup
-*.orig
-*.save
-*.old
-
-# =============================================================================
-# Node.js (if using any Node tools)
-# =============================================================================
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-package-lock.json
-yarn.lock
-
-# =============================================================================
-# Python (if using any Python tools)
-# =============================================================================
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-
-# =============================================================================
-# Go (if using any Go tools)
-# =============================================================================
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-vendor/
-
-# =============================================================================
-# Misc
-# =============================================================================
-*.pid
-*.seed
-*.pid.lock
+.env.*

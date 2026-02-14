@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Release script for Signal CLI Rich Message Plugin
+# Release script for Seerr Notification Plugin
 # Usage: ./scripts/release.sh [patch|minor|major]
 # Default: patch
 
@@ -70,6 +70,14 @@ echo -e "${GREEN}New version: ${NEW_VERSION}${NC}"
 # Check if we're in a git repo
 if ! git rev-parse --git-dir > /dev/null 2>&1; then
     echo -e "${RED}Error: Not a git repository${NC}"
+    exit 1
+fi
+
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT_BRANCH" != "main" ]; then
+    echo -e "${RED}Error: Releases can only be created from the main branch${NC}"
+    echo -e "Current branch: ${YELLOW}${CURRENT_BRANCH}${NC}"
+    echo -e "Switch to main first: ${BLUE}git checkout main${NC}"
     exit 1
 fi
 
@@ -145,6 +153,9 @@ Changes:
 ${COMMIT_MESSAGES}"
 echo -e "${GREEN}✓ Created tag v${NEW_VERSION}${NC}"
 
+# Get repository URL for the message
+REPO_URL=$(git remote get-url origin | sed -e 's|git@github.com:|https://github.com/|' -e 's|\.git$||')
+
 # Push to remote
 echo -e "${BLUE}Pushing to remote...${NC}"
 git push origin main
@@ -157,4 +168,4 @@ echo -e "${GREEN}  Release v${NEW_VERSION} Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "GitHub Actions will now build and publish the release."
-echo -e "Check progress at: https://github.com/lkshrk/signal-cli-rich-message-plugin/actions"
+echo -e "Check progress at: ${REPO_URL}/actions"

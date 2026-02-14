@@ -1,0 +1,22 @@
+services:
+  signal-cli-rest-api:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: signal-cli-rest-api-test
+    ports:
+      - "18080:8080"
+    environment:
+      - MODE=json-rpc
+      - ENABLE_PLUGINS=true
+    volumes:
+      - ../../dist/seerr-notification:/plugins:ro
+      - signal-cli-config:/home/.local/share/signal-cli
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/about"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  signal-cli-config:
+    driver: local

@@ -16,23 +16,29 @@ jobs:
     runs-on: ubuntu-latest
     name: Create Release
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
         ref: ${{ github.event.workflow_run.head_sha }}
-    
+
+    - name: Setup Lua and LuaCC
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y lua5.4 luarocks
+        sudo luarocks install luacc
+
     - name: Check for version tag
       id: check_tag
       run: |
         COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
         echo "Checking for tags on commit $COMMIT_SHA"
-        
+
         # Get tags pointing to this commit
         TAGS=$(git tag -l "v*" --points-at "$COMMIT_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
-        
+
         if [ -n "$TAGS" ]; then
           VERSION=$(echo "$TAGS" | head -1)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -42,72 +48,76 @@ jobs:
           echo "has_tag=false" >> $GITHUB_OUTPUT
           echo "No version tag found"
         fi
-    
+
     - name: Skip if no tag
       if: ${{ steps.check_tag.outputs.has_tag != 'true' }}
       run: |
         echo "No version tag on this commit. Skipping release."
         exit 0
-    
-    - name: Create release directory
+
+    - name: Build distribution
       if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      run: |
-        mkdir -p release/signal-richmessage-plugin
-        cp plugins/richmessage.def release/signal-richmessage-plugin/
-        cp plugins/richmessage.lua release/signal-richmessage-plugin/
-        cp README.md release/signal-richmessage-plugin/
-        cp LICENSE release/signal-richmessage-plugin/
-    
-    - name: Create release archive
-      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      run: |
-        cd release
-        tar -czf signal-richmessage-plugin.tar.gz signal-richmessage-plugin/
-        zip -r signal-richmessage-plugin.zip signal-richmessage-plugin/
-    
+      run: make dist
+
     - name: Generate release notes
       if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       run: |
         cat > release_notes.md << 'EOF'
-        ## Signal CLI Rich Message Plugin ${{ steps.check_tag.outputs.version }}
-        
+        ## Seerr Notification Plugin ${{ steps.check_tag.outputs.version }}
+
+        Pre-built plugin ready for use with signal-cli-rest-api.
+
         ### Installation
-        
-        **Option 1: Download and extract:**
+
+        Download and extract the plugin files to your signal-cli-rest-api plugins directory:
+
         ```bash
-        # Download the latest release
-        curl -L -o plugin.tar.gz https://github.com/${{ github.repository }}/releases/download/latest/signal-richmessage-plugin.tar.gz
-        
+        # Download this release
+        curl -L -o plugin.tar.gz https://github.com/${{ github.repository }}/releases/download/${{ steps.check_tag.outputs.version }}/seerr-notification-plugin.tar.gz
+
         # Extract to your plugins directory
-        tar -xzf plugin.tar.gz -C /path/to/your/plugins/
+        tar -xzf plugin.tar.gz -C /path/to/your/plugins/ --strip-components=1 seerr-notification
+
+        # Files will be extracted to:
+        # /path/to/your/plugins/seerr-notification.def
+        # /path/to/your/plugins/seerr-notification.lua
         ```
-        
-        **Option 2: Direct copy:**
-        ```bash
-        # Copy the two plugin files to your signal-cli-rest-api plugins directory
-        cp richmessage.def /path/to/plugins/
-        cp richmessage.lua /path/to/plugins/
-        ```
-        
-        ### Files Included
-        - `richmessage.def` - Plugin endpoint definition
-        - `richmessage.lua` - Plugin implementation
-        - `README.md` - Documentation
-        - `LICENSE` - MIT License
-        
+
+        ### What's Included
+
+        - **seerr-notification.def** - Plugin endpoint definition
+        - **seerr-notification.lua** - Pre-built, bundled plugin (all dependencies included)
+        - **README.md** - Complete documentation
+        - **LICENSE** - MIT License
+
         ### Requirements
-        - signal-cli-rest-api v0.60+ with plugin support enabled (`ENABLE_PLUGINS=true`)
-        
+
+        - signal-cli-rest-api **v0.60+** with plugin support
+        - Environment variable: `ENABLE_PLUGINS=true`
+        - Plugins directory mounted in Docker container
+
         ### Quick Start
-        1. Copy files to your plugins directory
-        2. Mount plugins directory in Docker: `./plugins:/plugins`
-        3. Enable plugins: `ENABLE_PLUGINS=true`
-        4. Restart signal-cli-rest-api
-        5. Test: `curl -X POST http://localhost:8080/v1/plugins/rich-message ...`
-        
-        See README.md for full documentation.
+
+        1. Extract plugin files to your plugins directory (see installation above)
+        2. Mount plugins directory: `-v ./plugins:/plugins`
+        3. Enable plugins: `-e ENABLE_PLUGINS=true`
+        4. Optional: Set Signal API URL: `-e SIGNAL_API_URL=http://127.0.0.1:8080`
+        5. Restart signal-cli-rest-api container
+        6. Configure Seerr webhook to point to: `http://your-server:8080/v1/plugins/seerr-notification`
+
+        ### Documentation
+
+        See **README.md** in the archive for:
+        - Complete payload structure
+        - Template customization
+        - Available variables
+        - Testing instructions
+
+        ### Build Info
+
+        This release contains pre-built plugin files bundled with LuaCC. No build step required for installation.
         EOF
-    
+
     - name: Create GitHub Release
       if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       uses: softprops/action-gh-release@v1
@@ -116,26 +126,26 @@ jobs:
         tag_name: ${{ steps.check_tag.outputs.version }}
         body_path: release_notes.md
         files: |
-          release/signal-richmessage-plugin.tar.gz
-          release/signal-richmessage-plugin.zip
+          dist/seerr-notification-plugin.tar.gz
+          dist/seerr-notification-plugin.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: Upload artifact for debugging
       if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       uses: actions/upload-artifact@v4
       with:
-        name: release-files
-        path: release/
-    
+        name: release-files-${{ steps.check_tag.outputs.version }}
+        path: dist/
+
     - name: Update latest tag
       if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
-        
+
         git tag -d latest 2>/dev/null || true
         git push origin :refs/tags/latest 2>/dev/null || true
-        
+
         git tag -a latest -m "Latest release: ${{ steps.check_tag.outputs.version }}"
         git push origin latest
