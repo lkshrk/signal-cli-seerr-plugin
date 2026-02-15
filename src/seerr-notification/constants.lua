@@ -11,7 +11,9 @@ local constants = {}
 -- =============================================================================
 -- Environment Configuration
 -- =============================================================================
-constants.SIGNAL_API_URL = os.getenv("SIGNAL_API_URL") or "http://127.0.0.1:8080"
+constants.SIGNAL_API_PORT = os.getenv("PORT") or "8080"
+constants.SIGNAL_API_HOST = os.getenv("SIGNAL_API_HOST") or "http://127.0.0.1"
+constants.SIGNAL_API_URL = constants.SIGNAL_API_HOST .. ":" .. constants.SIGNAL_API_PORT
 
 -- =============================================================================
 -- Image Processing Configuration
