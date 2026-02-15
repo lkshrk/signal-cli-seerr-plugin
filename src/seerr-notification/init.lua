@@ -18,8 +18,17 @@ local response = require("seerr-notification.response")
 local seerr_notification = {}
 
 local function handle_error(status_code, message, payload)
-  local ntype = (payload and payload.notification_type) or "unknown"
-  print(string.format("[SeerrNotification] Error: %s | Status: %d | Type: %s", message, status_code, ntype))
+  local payload_str
+  if type(payload) == "table" then
+    payload_str = json.encode(payload)
+  else
+    payload_str = tostring(payload)
+  end
+
+  print(string.format("[SeerrNotification] Error: %s | Status: %d | Payload: %s",
+    message,
+    status_code,
+    payload_str))
   response.send_error(status_code, message, payload)
 end
 
@@ -87,7 +96,8 @@ function seerr_notification.send_notification(payload_data)
     return
   end
 
-  print(string.format("[SeerrNotification] Notification sent successfully | Type: %s | Recipient: %s", notification_type, payload.recipient))
+  print(string.format("[SeerrNotification] Notification sent successfully | Type: %s | Recipient: %s", notification_type,
+    payload.recipient))
   response.send_success(notification_type)
 end
 

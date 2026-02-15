@@ -44,6 +44,24 @@ setup() {
     echo "$body" | grep -q "recipient"
 }
 
+@test "Validation error includes message body" {
+    run curl -s -w "\n%{http_code}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d '{
+            "sender": "'"$SENDER_NUMBER"'",
+            "subject": "Test Movie",
+            "notification_type": "MEDIA_PENDING"
+        }' \
+        "${API_URL}/v1/plugins/seerr-notification"
+
+    http_code=$(echo "$output" | tail -n1)
+    body=$(echo "$output" | sed '$d')
+
+    [ "$http_code" -eq 400 ]
+    echo "$body" | grep -qi "Missing required fields"
+}
+
 @test "Reject missing sender" {
     run curl -s -w "\n%{http_code}" \
         -X POST \
@@ -88,7 +106,10 @@ setup() {
         "${API_URL}/v1/plugins/seerr-notification"
 
     http_code=$(echo "$output" | tail -n1)
+    body=$(echo "$output" | sed '$d')
+
     [ "$http_code" -eq 400 ]
+    echo "$body" | grep -qi "Invalid JSON"
 }
 
 @test "Reject unknown notification type" {
@@ -104,7 +125,10 @@ setup() {
         "${API_URL}/v1/plugins/seerr-notification"
 
     http_code=$(echo "$output" | tail -n1)
+    body=$(echo "$output" | sed '$d')
+
     [ "$http_code" -eq 400 ]
+    echo "$body" | grep -qi "Unknown notification type"
 }
 
 @test "Valid MEDIA_PENDING reaches Signal API (500 expected without registered number)" {
@@ -273,6 +297,29 @@ setup() {
     body=$(echo "$output" | sed '$d')
 
     [ "$http_code" -eq 400 ]
-    echo "$body" | grep -q '\\"success\\":false'
-    echo "$body" | grep -q '\\"error\\"'
+    echo "$body" | grep -Eq '"success":false|\\"success\\":false'
+    echo "$body" | grep -Eq '"error"|\\"error\\"'
+}
+
+@test "Error logs include JSON payload" {
+    run curl -s -w "\n%{http_code}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d '{
+            "sender": "'"$SENDER_NUMBER"'",
+            "subject": "Missing recipient test",
+            "notification_type": "MEDIA_PENDING"
+        }' \
+        "${API_URL}/v1/plugins/seerr-notification"
+
+    http_code=$(echo "$output" | tail -n1)
+    [ "$http_code" -eq 400 ]
+
+    sleep 1
+    run docker logs --tail=200 signal-cli-rest-api-test
+    echo "$output" | grep -Fq "Payload: {"
+    echo "$output" | grep -Fq "\"sender\":\"$SENDER_NUMBER\""
+    echo "$output" | grep -Fq "\"subject\":\"Missing recipient test\""
+    echo "$output" | grep -Fq "\"notification_type\":\"MEDIA_PENDING\""
+    ! echo "$output" | grep -Fq "table:"
 }

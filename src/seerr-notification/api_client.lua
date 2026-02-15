@@ -19,7 +19,7 @@ function api_client.send_message(api_payload)
 	end
 
 	if not api_response or (api_response.status_code ~= 200 and api_response.status_code ~= 201) then
-		return false, "Unexpected response from Signal API: " .. (api_response.status_code or "unknown")
+		return false, "Unexpected response from Signal API: " .. (api_response.body or "unknown")
 	end
 
 	return true, nil
