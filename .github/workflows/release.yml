@@ -62,8 +62,12 @@ jobs:
     - name: Generate release notes
       if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
       run: |
-        cat > release_notes.md << 'EOF'
+        CHANGELOG=$(git log --pretty=format:'- %s')
+        cat > release_notes.md << EOF
         ## Seerr Notification Plugin ${{ steps.check_tag.outputs.version }}
+
+        ### Changelog
+        ${CHANGELOG}
 
         Pre-built plugin ready for use with signal-cli-rest-api.
 
@@ -83,37 +87,8 @@ jobs:
         # /path/to/your/plugins/seerr-notification.lua
         ```
 
-        ### What's Included
+        Full install guide: https://github.com/${{ github.repository }}/blob/${{ steps.check_tag.outputs.version }}/INSTALL.md
 
-        - **seerr-notification.def** - Plugin endpoint definition
-        - **seerr-notification.lua** - Pre-built, bundled plugin (all dependencies included)
-        - **README.md** - Complete documentation
-        - **LICENSE** - MIT License
-
-        ### Requirements
-
-        - signal-cli-rest-api **v0.60+** with plugin support
-        - Environment variable: `ENABLE_PLUGINS=true`
-        - Plugins directory mounted in Docker container
-
-        ### Quick Start
-
-        1. Extract plugin files to your plugins directory (see installation above)
-        2. Mount plugins directory: `-v ./plugins:/plugins`
-        3. Enable plugins: `-e ENABLE_PLUGINS=true`
-        4. Optional: Set Signal API URL: `-e SIGNAL_API_URL=http://127.0.0.1:8080`
-        5. Restart signal-cli-rest-api container
-        6. Configure Seerr webhook to point to: `http://your-server:8080/v1/plugins/seerr-notification`
-
-        ### Documentation
-
-        See **README.md** in the archive for:
-        - Complete payload structure
-        - Template customization
-        - Available variables
-        - Testing instructions
-
-        ### Build Info
 
         This release contains pre-built plugin files bundled with LuaCC. No build step required for installation.
         EOF
