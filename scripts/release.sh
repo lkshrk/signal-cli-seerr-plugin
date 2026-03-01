@@ -13,10 +13,23 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Get current version from git tags
+# Get the highest stable semver tag (e.g. v1.2.3 or 1.2.3)
+get_latest_semver_tag() {
+    git tag --list \
+        | grep -E '^(v)?[0-9]+\.[0-9]+\.[0-9]+$' \
+        | awk '{ normalized = $0; sub(/^v/, "", normalized); print normalized " " $0 }' \
+        | sort -k1,1V \
+        | tail -n1 \
+        | awk '{ print $2 }'
+}
+
+# Get current version from semver tags
 get_current_version() {
     local version
-    version=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+    version=$(get_latest_semver_tag)
+    if [ -z "$version" ]; then
+        version="v0.0.0"
+    fi
     # Remove 'v' prefix if present
     echo "${version#v}"
 }
@@ -97,8 +110,8 @@ if ! git diff-index --quiet HEAD --; then
     fi
 fi
 
-# Get commit messages since last tag (if any)
-LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+# Get commit messages since last semver tag (if any)
+LAST_TAG=$(get_latest_semver_tag)
 
 if [ -z "$LAST_TAG" ]; then
     echo -e "${YELLOW}No previous tags found. This appears to be the first release.${NC}"
