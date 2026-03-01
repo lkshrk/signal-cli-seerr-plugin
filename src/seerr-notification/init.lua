@@ -44,7 +44,7 @@ function seerr_notification.send_notification(payload_data)
     return
   end
 
-  local required_fields = { "recipient", "sender", "notification_type" }
+  local required_fields = { "recipient", "sender" }
   local missing = {}
   for _, field in ipairs(required_fields) do
     if not payload[field] or payload[field] == "" then
@@ -57,12 +57,12 @@ function seerr_notification.send_notification(payload_data)
   end
 
   local notification_type = payload.notification_type
-
-  if not constants.is_valid_notification_type(notification_type) then
+  if notification_type and not constants.is_valid_notification_type(notification_type) then
     handle_error(400, string.format("Unknown notification type '%s'", notification_type), payload)
     return
   end
 
+  local effective_notification_type = notification_type or "default"
   local message_text, build_err = templates.build_message(notification_type, payload)
   if build_err then
     handle_error(400, build_err, payload)
@@ -96,9 +96,10 @@ function seerr_notification.send_notification(payload_data)
     return
   end
 
-  print(string.format("[SeerrNotification] Notification sent successfully | Type: %s | Recipient: %s", notification_type,
+  print(string.format("[SeerrNotification] Notification sent successfully | Type: %s | Recipient: %s",
+    effective_notification_type,
     payload.recipient))
-  response.send_success(notification_type)
+  response.send_success(effective_notification_type)
 end
 
 if pluginInputData and pluginOutputData then

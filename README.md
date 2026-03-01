@@ -52,14 +52,18 @@ Configure your Seerr instance to send webhooks to this plugin. The payload uses 
 }
 ```
 
+`notification_type` is optional. If omitted, the plugin uses the `default` template.
+
 You can include any Seerr template variable (e.g. `{{media_type}}`, `{{issue_id}}`, `{{reportedBy_username}}`) as a key in the payload. See the [full variable list](https://docs.seerr.dev/using-jellyseerr/notifications/webhook#template-variables) for all available options.
 
 **Required Fields:**
 - `recipient`: Signal phone number to receive the message
 - `sender`: Signal phone number to send from (must be registered in signal-cli-rest-api)
-- `notification_type`: Determines which template is used (e.g., `MEDIA_PENDING`, `MEDIA_APPROVED`)
 - `subject`: Notification title
 - `message`: Notification body
+
+**Optional Fields:**
+- `notification_type`: Determines which template is used (e.g., `MEDIA_PENDING`, `MEDIA_APPROVED`). If not provided, the `default` template is used.
 
 ## Message Format
 

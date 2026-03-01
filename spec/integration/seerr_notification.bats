@@ -80,22 +80,20 @@ setup() {
     echo "$body" | grep -q "sender"
 }
 
-@test "Reject missing notification_type" {
+@test "Allow missing notification_type and use default template" {
     run curl -s -w "\n%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
         -d '{
             "recipient": "'"$RECIPIENT"'",
             "sender": "'"$SENDER_NUMBER"'",
-            "subject": "Test Movie"
+            "subject": "Test Movie",
+            "message": "Fallback template should be used"
         }' \
         "${API_URL}/v1/plugins/seerr-notification"
 
     http_code=$(echo "$output" | tail -n1)
-    body=$(echo "$output" | sed '$d')
-
-    [ "$http_code" -eq 400 ]
-    echo "$body" | grep -q "notification_type"
+    [ "$http_code" -eq 500 ] || [ "$http_code" -eq 200 ]
 }
 
 @test "Reject invalid JSON" {
@@ -241,6 +239,25 @@ setup() {
 
     [ "$http_code" -eq 400 ]
     echo "$body" | grep -qi "missing"
+}
+
+@test "Reject missing template variables when notification_type is omitted" {
+    run curl -s -w "\n%{http_code}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d '{
+            "recipient": "'"$RECIPIENT"'",
+            "sender": "'"$SENDER_NUMBER"'",
+            "subject": "The Matrix"
+        }' \
+        "${API_URL}/v1/plugins/seerr-notification"
+
+    http_code=$(echo "$output" | tail -n1)
+    body=$(echo "$output" | sed '$d')
+
+    [ "$http_code" -eq 400 ]
+    echo "$body" | grep -qi "Missing required variables"
+    echo "$body" | grep -q "message"
 }
 
 @test "Reject missing template variables for MEDIA_AVAILABLE" {

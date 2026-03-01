@@ -56,6 +56,13 @@ test("falls back to default template for unknown type", function()
   assert(result:find("Bar", 1, true), "Should have message")
 end)
 
+test("falls back to default template when type is omitted", function()
+  local payload = { subject = "Foo", message = "Bar" }
+  local result = testable_functions.build_message(nil, payload)
+  assert(result:find("**Foo**", 1, true), "Should render using default template")
+  assert(result:find("Bar", 1, true), "Should have message")
+end)
+
 test("returns error when subject is missing", function()
   local payload = { message = "Body only" }
   local result, err = testable_functions.build_message("MEDIA_PENDING", payload)
