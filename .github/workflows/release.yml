@@ -19,7 +19,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: ${{ github.event.workflow_run.head_sha }}
@@ -95,7 +95,7 @@ jobs:
 
     - name: Create GitHub Release
       if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       with:
         name: ${{ steps.check_tag.outputs.version }}
         tag_name: ${{ steps.check_tag.outputs.version }}
@@ -108,7 +108,7 @@ jobs:
 
     - name: Upload artifact for debugging
       if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: release-files-${{ steps.check_tag.outputs.version }}
         path: dist/
