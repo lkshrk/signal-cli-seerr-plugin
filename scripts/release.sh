@@ -1,184 +1,126 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# release.sh — tag a new Seerr notification plugin release and push branch+tag for CI-gated release.
+# Usage: ./scripts/release.sh major|minor|patch|v1.2.3
+# The release workflow publishes the pushed tag only after CI passes its commit.
+set -euo pipefail
 
-# Release script for Seerr Notification Plugin
-# Usage: ./scripts/release.sh [patch|minor|major]
-# Default: patch
-
-set -e
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Get the highest stable semver tag (e.g. v1.2.3 or 1.2.3)
-get_latest_semver_tag() {
-    git tag --list \
-        | grep -E '^(v)?[0-9]+\.[0-9]+\.[0-9]+$' \
-        | awk '{ normalized = $0; sub(/^v/, "", normalized); print normalized " " $0 }' \
-        | sort -k1,1V \
-        | tail -n1 \
-        | awk '{ print $2 }'
+usage() {
+  echo "Usage: $0 major|minor|patch|vX.Y.Z" >&2
+  exit 1
 }
 
-# Get current version from semver tags
-get_current_version() {
-    local version
-    version=$(get_latest_semver_tag)
-    if [ -z "$version" ]; then
-        version="v0.0.0"
-    fi
-    # Remove 'v' prefix if present
-    echo "${version#v}"
-}
+[[ $# -ne 1 ]] && usage
 
-# Get current version
-CURRENT_VERSION=$(get_current_version)
+INPUT="$1"
+BRANCH=""
 
-if [ "$CURRENT_VERSION" = "0.0.0" ]; then
-    echo -e "${YELLOW}No previous tags found. This will be the first release.${NC}"
-    CURRENT_VERSION="0.0.0"
-fi
-
-echo -e "${BLUE}Current version: ${CURRENT_VERSION}${NC}"
-
-# Determine bump type
-BUMP_TYPE=${1:-patch}
-
-if [[ ! "$BUMP_TYPE" =~ ^(patch|minor|major)$ ]]; then
-    echo -e "${RED}Error: Invalid bump type. Use 'patch', 'minor', or 'major'${NC}"
-    echo "Usage: ./scripts/release.sh [patch|minor|major]"
+ensure_release_branch_current() {
+  BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+  if [[ -z "$BRANCH" ]]; then
+    echo "Error: must be on a branch, not detached HEAD." >&2
     exit 1
-fi
+  fi
 
-echo -e "${BLUE}Bump type: ${BUMP_TYPE}${NC}"
+  if git diff --quiet && git diff --cached --quiet; then
+    git pull --ff-only origin "$BRANCH"
+  else
+    git fetch origin "$BRANCH"
+    if ! git merge-base --is-ancestor "refs/remotes/origin/${BRANCH}" HEAD; then
+      echo "Error: ${BRANCH} is behind or diverged from origin/${BRANCH}." >&2
+      echo "Pull/rebase before including local changes in a release." >&2
+      exit 1
+    fi
+  fi
+}
 
-# Parse current version
-IFS='.' read -r -a VERSION_PARTS <<< "$CURRENT_VERSION"
-MAJOR=${VERSION_PARTS[0]}
-MINOR=${VERSION_PARTS[1]}
-PATCH=${VERSION_PARTS[2]}
+verify_release_branch_still_current() {
+  git fetch origin "$BRANCH"
+  if ! git merge-base --is-ancestor "refs/remotes/origin/${BRANCH}" HEAD; then
+    echo "Error: origin/${BRANCH} changed while preparing the release." >&2
+    echo "Pull/rebase, rerun the release script, and create the tag from the updated branch." >&2
+    exit 1
+  fi
+}
 
-# Calculate new version
-case $BUMP_TYPE in
-    major)
-        MAJOR=$((MAJOR + 1))
-        MINOR=0
-        PATCH=0
-        ;;
-    minor)
-        MINOR=$((MINOR + 1))
-        PATCH=0
-        ;;
-    patch)
-        PATCH=$((PATCH + 1))
-        ;;
+commit_remaining_changes() {
+  if git diff --quiet && git diff --cached --quiet; then
+    return
+  fi
+
+  echo "Uncommitted changes remain:"
+  git status --short
+  echo
+
+  read -r -p "Include these changes in a release prep commit? [y/N] " INCLUDE_CHANGES
+  case "${INCLUDE_CHANGES}" in
+    [Yy]|[Yy][Ee][Ss])
+      read -r -p "Commit message [chore: prepare release]: " RELEASE_COMMIT_MESSAGE
+      RELEASE_COMMIT_MESSAGE="${RELEASE_COMMIT_MESSAGE:-chore: prepare release}"
+      git add -A
+      git commit -m "$RELEASE_COMMIT_MESSAGE"
+      ;;
+    *)
+      echo "Aborted. Commit, include, or stash changes before releasing." >&2
+      exit 1
+      ;;
+  esac
+}
+
+ensure_release_branch_current
+commit_remaining_changes
+
+# Re-check origin before tagging so concurrent updates fail without leaving an unpushable tag.
+verify_release_branch_still_current
+
+CURRENT=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo "v0.0.0")
+CURRENT_CLEAN="${CURRENT#v}"
+IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_CLEAN"
+
+VERSION=""
+case "$INPUT" in
+  major)
+    MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+  minor)
+    MINOR=$((MINOR + 1)); PATCH=0 ;;
+  patch)
+    PATCH=$((PATCH + 1)) ;;
+  v[0-9]*.[0-9]*.[0-9]*)
+    VERSION="$INPUT" ;;
+  [0-9]*.[0-9]*.[0-9]*)
+    VERSION="v$INPUT" ;;
+  *)
+    echo "Error: unrecognised argument '$INPUT'" >&2
+    usage ;;
 esac
 
-NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-echo -e "${GREEN}New version: ${NEW_VERSION}${NC}"
+[[ -z "$VERSION" ]] && VERSION="v${MAJOR}.${MINOR}.${PATCH}"
 
-# Check if we're in a git repo
-if ! git rev-parse --git-dir > /dev/null 2>&1; then
-    echo -e "${RED}Error: Not a git repository${NC}"
-    exit 1
+if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+  echo "Error: local tag ${VERSION} already exists." >&2
+  exit 1
 fi
 
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [ "$CURRENT_BRANCH" != "main" ]; then
-    echo -e "${RED}Error: Releases can only be created from the main branch${NC}"
-    echo -e "Current branch: ${YELLOW}${CURRENT_BRANCH}${NC}"
-    echo -e "Switch to main first: ${BLUE}git checkout main${NC}"
-    exit 1
+if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+  echo "Error: remote tag ${VERSION} already exists." >&2
+  exit 1
 fi
 
-# Check for uncommitted changes
-if ! git diff-index --quiet HEAD --; then
-    echo -e "${YELLOW}Warning: You have uncommitted changes${NC}"
-    read -p "Do you want to commit them before releasing? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${BLUE}Staging all changes...${NC}"
-        git add .
-        read -p "Enter commit message: " commit_message
-        git commit -m "$commit_message"
-    else
-        echo -e "${RED}Release aborted. Please commit or stash your changes first.${NC}"
-        exit 1
-    fi
-fi
-
-# Get commit messages since last semver tag (if any)
-LAST_TAG=$(get_latest_semver_tag)
-
-if [ -z "$LAST_TAG" ]; then
-    echo -e "${YELLOW}No previous tags found. This appears to be the first release.${NC}"
-    COMMIT_MESSAGES=$(git log --pretty=format:"- %s" --no-merges)
-else
-    echo -e "${BLUE}Generating changelog from commits since ${LAST_TAG}...${NC}"
-    COMMIT_MESSAGES=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --no-merges)
-fi
-
-if [ -z "$COMMIT_MESSAGES" ]; then
-    echo -e "${YELLOW}Warning: No new commits since last tag${NC}"
-    read -p "Do you want to continue anyway? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${RED}Release aborted.${NC}"
-        exit 1
-    fi
-fi
-
-# Show summary
-echo ""
-echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  Release Summary${NC}"
-echo -e "${BLUE}========================================${NC}"
-echo -e "Version: ${GREEN}${CURRENT_VERSION}${NC} → ${GREEN}${NEW_VERSION}${NC}"
-echo -e "Bump type: ${YELLOW}${BUMP_TYPE}${NC}"
-echo ""
-echo -e "${BLUE}Changes:${NC}"
-echo "$COMMIT_MESSAGES"
-echo ""
-echo -e "${BLUE}========================================${NC}"
-
-# Confirm release
-read -p "Do you want to create the release? (y/n) " -n 1 -r
+echo "Current tag : ${CURRENT}"
+echo "New tag     : ${VERSION}"
+echo "Branch      : ${BRANCH}"
 echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${RED}Release aborted.${NC}"
-    exit 1
-fi
 
-# Commit version bump (if there are any staged changes)
-if ! git diff-index --quiet HEAD --; then
-    git add -A
-    git commit -m "Release v${NEW_VERSION}" || true
-    echo -e "${GREEN}✓ Committed changes${NC}"
-fi
+read -r -p "Tag ${BRANCH} at ${VERSION} and push branch+tag? [y/N] " CONFIRM
+case "${CONFIRM}" in
+  [Yy]|[Yy][Ee][Ss]) ;;
+  *) echo "Aborted."; exit 0 ;;
+esac
 
-# Create tag
-git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}
+git tag -a "${VERSION}" -m "Release ${VERSION}"
+git push origin "${BRANCH}" "${VERSION}"
 
-Changes:
-${COMMIT_MESSAGES}"
-echo -e "${GREEN}✓ Created tag v${NEW_VERSION}${NC}"
-
-# Get repository URL for the message
-REPO_URL=$(git remote get-url origin | sed -e 's|git@github.com:|https://github.com/|' -e 's|\.git$||')
-
-# Push to remote
-echo -e "${BLUE}Pushing to remote...${NC}"
-git push origin main
-git push origin "v${NEW_VERSION}"
-echo -e "${GREEN}✓ Pushed to remote${NC}"
-
-echo ""
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  Release v${NEW_VERSION} Complete!${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
-echo -e "GitHub Actions will now build and publish the release."
-echo -e "Check progress at: ${REPO_URL}/actions"
+REPO=$(git remote get-url origin | sed -E 's#.*github\.com[:/](.*)$#\1#; s#\.git$##')
+echo
+echo "✓ Pushed ${VERSION}."
+echo "  The release workflow will publish it automatically once CI passes on this tagged commit."
+echo "  https://github.com/${REPO}/actions"

@@ -2,9 +2,17 @@ name: Plugin CI
 
 on:
   push:
-    branches: ["**"]
+    branches:
+      - main
   pull_request:
-    branches: ["**"]
+    branches:
+      - '**'
+  workflow_dispatch:
+
+# Preserve CI evidence for every direct-to-main commit by never cancelling main runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test-and-build:
@@ -12,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Lua and LuaCC
         run: |
@@ -35,7 +43,7 @@ jobs:
           echo "✅ Bundle syntax valid"
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: plugin-build
           path: dist/seerr-notification/
@@ -47,10 +55,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: plugin-build
           path: dist/seerr-notification

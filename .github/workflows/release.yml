@@ -3,124 +3,175 @@ name: Release Plugin
 on:
   workflow_run:
     workflows: ["Plugin CI"]
-    types:
-      - completed
-    branches:
-      - main
+    types: [completed]
+  # CI listens only to branch pushes, so tags on tested tips need their own trigger.
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+# Serialize runs because annotated tag and commit SHAs cannot share a per-SHA race guard.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   check-and-release:
     runs-on: ubuntu-latest
     name: Create Release
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # Annotated tag pushes set github.sha to the tag object, not its commit.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 0
 
-    - name: Setup Lua and LuaCC
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y lua5.4 luarocks
-        sudo luarocks install luacc
+      - name: Verify latest CI passed
+        id: civerify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
 
-    - name: Check for version tag
-      id: check_tag
-      run: |
-        COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
-        echo "Checking for tags on commit $COMMIT_SHA"
+          # Dereference through any annotated tag to the tested commit.
+          TARGET_SHA="$(git rev-parse 'HEAD^{commit}')"
 
-        # Get tags pointing to this commit
-        TAGS=$(git tag -l "v*" --points-at "$COMMIT_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          # A failed rerun must supersede an older success for the same commit.
+          latest="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/test.yml/runs" \
+            -f head_sha="${TARGET_SHA}" \
+            -f event=push \
+            -f per_page=100 \
+            --jq '.workflow_runs | sort_by(.run_number) | last | [.status, (.conclusion // "")] | @tsv' 2>/dev/null || true)"
 
-        if [ -n "$TAGS" ]; then
-          VERSION=$(echo "$TAGS" | head -1)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "has_tag=true" >> $GITHUB_OUTPUT
-          echo "Found version tag: $VERSION"
-        else
-          echo "has_tag=false" >> $GITHUB_OUTPUT
-          echo "No version tag found"
-        fi
+          if [ -z "${latest}" ]; then
+            echo "::error::No Plugin CI run found for commit ${TARGET_SHA}."
+            exit 1
+          fi
 
-    - name: Skip if no tag
-      if: ${{ steps.check_tag.outputs.has_tag != 'true' }}
-      run: |
-        echo "No version tag on this commit. Skipping release."
-        exit 0
+          IFS=$'\t' read -r ci_status ci_conclusion <<< "${latest}"
+          if [ "${ci_status}" = "completed" ] && [ "${ci_conclusion}" = "success" ]; then
+            echo "Latest Plugin CI run for ${TARGET_SHA} passed."
+            echo "approved=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-    - name: Build distribution
-      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      run: make dist
+          # A tag or older workflow_run arriving mid-CI is deferred to the latest successful workflow_run trigger.
+          if [ "${ci_status}" != "completed" ] && [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]; then
+            echo "CI for ${TARGET_SHA} is still running; deferring to the workflow_run trigger."
+            exit 0
+          fi
 
-    - name: Generate release notes
-      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      run: |
-        CHANGELOG=$(git log --pretty=format:'- %s')
-        cat > release_notes.md << EOF
-        ## Seerr Notification Plugin ${{ steps.check_tag.outputs.version }}
+          echo "::error::Latest Plugin CI run for ${TARGET_SHA} finished with ${ci_conclusion:-unknown}."
+          exit 1
 
-        ### Changelog
-        ${CHANGELOG}
+      - name: Check for release tag
+        id: tag
+        if: steps.civerify.outputs.approved == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --tags --force
+          TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+          if [ -z "$TAG" ]; then
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "No vX.Y.Z tag points at this commit; skipping release."
+            exit 0
+          fi
+          # Tag-push and workflow_run may both reach this idempotent publish step.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG already exists; skipping duplicate publish."
+            exit 0
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG"
+          git checkout "$TAG"
 
-        Pre-built plugin ready for use with signal-cli-rest-api.
+      - name: Setup Lua and LuaCC
+        if: steps.tag.outputs.tag != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4 luarocks
+          sudo luarocks install luacc
 
-        ### Installation
+      - name: Build distribution
+        if: steps.tag.outputs.tag != ''
+        run: make dist
 
-        Download and extract the plugin files to your signal-cli-rest-api plugins directory:
+      - name: Generate release notes
+        if: steps.tag.outputs.tag != ''
+        env:
+          VERSION: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          CHANGELOG=$(git log --pretty=format:'- %s')
+          cat > release_notes.md << EOF
+          ## Seerr Notification Plugin ${VERSION}
 
-        ```bash
-        # Download this release
-        curl -L -o plugin.tar.gz https://github.com/${{ github.repository }}/releases/download/${{ steps.check_tag.outputs.version }}/seerr-notification-plugin.tar.gz
+          ### Changelog
+          ${CHANGELOG}
 
-        # Extract to your plugins directory
-        tar -xzf plugin.tar.gz -C /path/to/your/plugins/ --strip-components=1 seerr-notification
+          Pre-built plugin ready for use with signal-cli-rest-api.
 
-        # Files will be extracted to:
-        # /path/to/your/plugins/seerr-notification.def
-        # /path/to/your/plugins/seerr-notification.lua
-        ```
+          ### Installation
 
-        Full install guide: https://github.com/${{ github.repository }}/blob/${{ steps.check_tag.outputs.version }}/INSTALL.md
+          Download and extract the plugin files to your signal-cli-rest-api plugins directory:
+
+          \`\`\`bash
+          # Download this release
+          curl -L -o plugin.tar.gz https://github.com/${REPO}/releases/download/${VERSION}/seerr-notification-plugin.tar.gz
+
+          # Extract to your plugins directory
+          tar -xzf plugin.tar.gz -C /path/to/your/plugins/ --strip-components=1 seerr-notification
+
+          # Files will be extracted to:
+          # /path/to/your/plugins/seerr-notification.def
+          # /path/to/your/plugins/seerr-notification.lua
+          \`\`\`
+
+          Full install guide: https://github.com/${REPO}/blob/${VERSION}/INSTALL.md
 
 
-        This release contains pre-built plugin files bundled with LuaCC. No build step required for installation.
-        EOF
+          This release contains pre-built plugin files bundled with LuaCC. No build step required for installation.
+          EOF
 
-    - name: Create GitHub Release
-      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      uses: softprops/action-gh-release@v1
-      with:
-        name: ${{ steps.check_tag.outputs.version }}
-        tag_name: ${{ steps.check_tag.outputs.version }}
-        body_path: release_notes.md
-        files: |
-          dist/seerr-notification-plugin.tar.gz
-          dist/seerr-notification-plugin.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        if: steps.tag.outputs.tag != ''
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          body_path: release_notes.md
+          files: |
+            dist/seerr-notification-plugin.tar.gz
+            dist/seerr-notification-plugin.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload artifact for debugging
-      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: release-files-${{ steps.check_tag.outputs.version }}
-        path: dist/
+      - name: Upload artifact for debugging
+        if: steps.tag.outputs.tag != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-files-${{ steps.tag.outputs.tag }}
+          path: dist/
 
-    - name: Update latest tag
-      if: ${{ steps.check_tag.outputs.has_tag == 'true' }}
-      run: |
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
+      - name: Update latest tag
+        if: steps.tag.outputs.tag != ''
+        env:
+          VERSION: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-        git tag -d latest 2>/dev/null || true
-        git push origin :refs/tags/latest 2>/dev/null || true
+          git tag -d latest 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
 
-        git tag -a latest -m "Latest release: ${{ steps.check_tag.outputs.version }}"
-        git push origin latest
+          git tag -a latest -m "Latest release: ${VERSION}"
+          git push origin latest
