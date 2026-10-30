@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # Annotated tag pushes set github.sha to the tag object, not its commit.
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
@@ -144,7 +144,7 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.tag.outputs.tag != ''
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           name: ${{ steps.tag.outputs.tag }}
           tag_name: ${{ steps.tag.outputs.tag }}
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload artifact for debugging
         if: steps.tag.outputs.tag != ''
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-files-${{ steps.tag.outputs.tag }}
           path: dist/
